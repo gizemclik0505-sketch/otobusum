@@ -15,11 +15,14 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    // Aralık doğrudan sorguya yazılıyor: PostgreSQL, parametreyle kurulan
+    // "($1 || ' minutes')::interval" ifadesinde parametrenin tipini
+    // belirleyemeyip hata verebiliyor. Değer sunucu sabiti, kullanıcıdan
+    // gelmiyor; yine de sayıya zorlanıyor.
     const { rows } = await pool.query(
       `SELECT route_id, direction, percent, created_at
          FROM reports
-        WHERE created_at > now() - ($1 || ' minutes')::interval`,
-      [String(WINDOW_MINUTES)]
+        WHERE created_at > now() - interval '${Number(WINDOW_MINUTES)} minutes'`
     );
 
     // (hat, yön) bazında grupla

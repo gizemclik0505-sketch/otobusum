@@ -67,10 +67,10 @@ module.exports = async function handler(req, res) {
       `SELECT created_at
          FROM reports
         WHERE client_id = $1 AND route_id = $2 AND direction = $3
-          AND created_at > now() - ($4 || ' minutes')::interval
+          AND created_at > now() - interval '${Number(COOLDOWN_MINUTES)} minutes'
         ORDER BY created_at DESC
         LIMIT 1`,
-      [clientId, routeId, direction, String(COOLDOWN_MINUTES)]
+      [clientId, routeId, direction]
     );
 
     if (recent.rows.length) {
@@ -110,8 +110,8 @@ module.exports = async function handler(req, res) {
       `SELECT percent, created_at
          FROM reports
         WHERE route_id = $1 AND direction = $2
-          AND created_at > now() - ($3 || ' minutes')::interval`,
-      [routeId, direction, String(WINDOW_MINUTES)]
+          AND created_at > now() - interval '${Number(WINDOW_MINUTES)} minutes'`,
+      [routeId, direction]
     );
 
     return sendJson(res, 200, {
