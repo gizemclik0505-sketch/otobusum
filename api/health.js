@@ -15,18 +15,42 @@ module.exports = async function handler(req, res) {
   // --- 1. Ortam değişkeni tanımlı mı? --------------------------------
   const raw = process.env.DATABASE_URL;
   if (!raw || !raw.trim()) {
+    // İsim yanlış yazılmış olabilir. Benzer isimleri listeleyelim —
+    // yalnızca İSİMLER, değerler asla.
+    const benzer = Object.keys(process.env).filter((k) =>
+      /DATA|POSTGRES|NEON|SALT|_URL$/i.test(k)
+    );
+
+    const tanimliAmaBos = Object.prototype.hasOwnProperty.call(
+      process.env,
+      "DATABASE_URL"
+    );
+
     checks.push({
       adim: "1. DATABASE_URL ayarı",
       durum: "HATA",
-      aciklama: "Ortam değişkeni tanımlı değil.",
+      aciklama: tanimliAmaBos
+        ? "DATABASE_URL tanımlı ama DEĞERİ BOŞ. Yapıştırma sırasında pano boş kalmış olabilir."
+        : "DATABASE_URL adında bir değişken bulunamadı.",
     });
+
+    checks.push({
+      adim: "Projede bulunan benzer değişken isimleri",
+      durum: "BİLGİ",
+      aciklama: benzer.length
+        ? benzer.join(", ")
+        : "Hiç benzer isim yok — değişken bu dağıtıma hiç ulaşmamış.",
+    });
+
     return sendJson(res, 500, {
       ok: false,
       checks,
       hint:
-        "Vercel'de projeye girip Settings > Environment Variables bölümüne " +
-        "DATABASE_URL ekleyin, sonra Deployments sekmesinden son dağıtımı " +
-        "Redeploy edin. Değişken eklendikten sonra yeniden dağıtım şart.",
+        "Yukarıdaki listede DATABASE_URL tam olarak böyle yazılmış görünüyor mu? " +
+        "Küçük/büyük harf ve alt çizgiler birebir aynı olmalı. İsim doğruysa " +
+        "değeri boş demektir: Vercel'de değişkeni düzenleyip Neon adresini " +
+        "yeniden yapıştırın. Her iki durumda da sonrasında Deployments " +
+        "sekmesinden Redeploy yapmayı unutmayın.",
     });
   }
 
