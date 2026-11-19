@@ -11,15 +11,37 @@ Bağımsız bir projedir, belediyenin resmî uygulaması değildir.
 ## İçindekiler
 
 ```
-public/index.html   Uygulamanın tamamı: hat listesi, arama, harita,
-                    durak listesi, doluluk bildirimi. Konya verisi
-                    (157 hat, 4.190 durak, 262 yön) dosyanın içinde gömülü.
-api/occupancy.js    GET  — tüm hatların güncel doluluk özeti
-api/report.js       POST — yeni doluluk bildirimi kaydeder
-api/_lib.js         Veritabanı bağlantısı ve doluluk hesaplama
-db/schema.sql       Veritabanı tabloları
-package.json        Tek bağımlılık: pg (PostgreSQL sürücüsü)
+public/index.html          Uygulamanın tamamı: hat listesi, arama, harita,
+                           durak listesi, doluluk bildirimi, yakındaki duraklar.
+                           Konya verisi (157 hat, 4.190 durak, 262 yön) gömülü.
+public/sw.js               Çevrimdışı çalışma ve ana ekrana eklenebilme
+public/manifest.webmanifest Uygulama adı, simgeleri, açılış ayarları
+public/icon-*.png          Uygulama simgeleri
+api/occupancy.js           GET  — tüm hatların güncel doluluk özeti
+api/report.js              POST — yeni doluluk bildirimi kaydeder
+api/health.js              GET  — kurulum teşhisi
+api/_lib.js                Veritabanı bağlantısı ve doluluk hesaplama
+db/schema.sql              Veritabanı tabloları (ilk kurulum)
+db/002-vagon.sql           Tramvay vagon alanı (mevcut kuruluma ek)
+package.json               Tek bağımlılık: pg (PostgreSQL sürücüsü)
 ```
+
+`public/index.html` elle düzenlenmez; şablon ile Konya verisinden üretilir.
+Üretim adımı belgeyi `<!doctype html>`, `charset` ve `viewport` etiketleriyle
+birlikte kurar — bunlar olmadan telefon tarayıcıları sayfayı 980 piksel
+genişliğinde açıp küçültür.
+
+## Özellikler
+
+- **157 hat** (154 otobüs, 3 tramvay), 4.190 durak, gerçek güzergâh çizgileri
+- **Türkçe aksansız arama**: "sehir hastanesi" yazınca "Şehir Hastanesi" bulunur;
+  hat numarası ve durak adı birlikte aranır
+- **Doluluk bildirimi** ve yolcu bildirimlerinden hesaplanan doluluk
+- **Tramvayda vagon bazlı doluluk** — ön ve arka vagon ayrı
+- **Yakınımdaki duraklar** — konum izniyle en yakın 8 durak ve geçen hatlar
+- **Çevrimdışı çalışır** — hat, durak ve güzergâh verisi uygulamanın içinde;
+  internet yokken yalnızca doluluk güncellenemez
+- **Ana ekrana eklenebilir** — telefonda uygulama gibi açılır
 
 Derleme adımı yoktur. Vercel `public/` klasörünü olduğu gibi yayınlar,
 `api/` içindeki dosyaları sunucu fonksiyonu olarak çalıştırır.

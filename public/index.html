@@ -1,5 +1,28 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Konya otobüs ve tramvay hatlarında yolcu bildirimine dayalı doluluk takibi. Hat, durak ve güzergâh verisi Konya Büyükşehir Belediyesi Açık Veri Platformu'ndan.">
+<meta name="theme-color" content="#0f5e78" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1420" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Otobüsüm">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    color-scheme: light;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
 <title>Otobüsüm</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <style>
   /* Layout: mobil tek kolon (liste -> detay geçişi); 920px üstünde iki panel yan yana */
@@ -629,6 +652,9 @@
   }
   .site-foot a { color: var(--accent); }
 </style>
+</head>
+<body>
+
 
 <header class="topbar">
   <div class="topbar-inner">
@@ -2058,3 +2084,20 @@
   });
 })();
 </script>
+
+
+<script>
+  // Hizmet çalışanı: uygulamanın ana ekrana eklenebilmesini ve internet
+  // olmadan da açılmasını sağlar. Hat, durak ve güzergâh verisi sayfanın
+  // içinde olduğu için çevrimdışıyken de çalışır; yalnızca doluluk güncellenmez.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js").catch(function (e) {
+        if (window.console) console.warn("Hizmet çalışanı kaydedilemedi:", e && e.message);
+      });
+    });
+  }
+</script>
+
+</body>
+</html>
