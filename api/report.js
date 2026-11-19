@@ -2,7 +2,14 @@
 //
 // Bir doluluk bildirimini kaydeder ve ilgili hat+yönün güncel özetini döndürür.
 //
-// Gövde: { "routeId": "1-A", "direction": 0, "percent": 65, "clientId": "<uuid>" }
+// Gövde: { "routeId": "1-A", "direction": 0, "percent": 65,
+//          "clientId": "<uuid>", "car": null }
+//
+// car: 1 = ön vagon, 2 = arka vagon, null/yok = ayırt edilmemiş.
+// Tramvaylar iki vagonlu ve vagonların doluluğu çok farklı olabiliyor.
+// Sunucu hangi hattın tramvay olduğunu bilmez (hat verisi ön yüzde durur),
+// bu yüzden car alanını her hat için kabul eder; seçeneği yalnızca tramvay
+// hatlarında gösteren taraf arayüzdür.
 
 const { pool, summarize, hashIp, sendJson, WINDOW_MINUTES, COOLDOWN_MINUTES } = require("./_lib.js");
 
@@ -48,6 +55,14 @@ module.exports = async function handler(req, res) {
   const percent = Number(body.percent);
   const clientId = typeof body.clientId === "string" ? body.clientId.trim() : "";
 
+  let car = null;
+  if (body.car !== null && body.car !== undefined && body.car !== "") {
+    car = Number(body.car);
+    if (car !== 1 && car !== 2) {
+      return sendJson(res, 400, { ok: false, error: "Vagon 1 veya 2 olmalı" });
+    }
+  }
+
   if (!ROUTE_RE.test(routeId)) {
     return sendJson(res, 400, { ok: false, error: "Hat kimliği geçersiz" });
   }
@@ -62,15 +77,18 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // --- hız sınırı: aynı cihaz, aynı hat+yön -------------------------
+    // --- hız sınırı: aynı cihaz, aynı hat+yön+vagon -------------------
+    // Vagon ayrı sayılır: biri ön vagonu, biri arka vagonu bildirmek
+    // isteyebilir ve ikisi de geçerli bilgidir.
     const recent = await pool.query(
       `SELECT created_at
          FROM reports
         WHERE client_id = $1 AND route_id = $2 AND direction = $3
+          AND car IS NOT DISTINCT FROM $4
           AND created_at > now() - interval '${Number(COOLDOWN_MINUTES)} minutes'
         ORDER BY created_at DESC
         LIMIT 1`,
-      [clientId, routeId, direction]
+      [clientId, routeId, direction, car]
     );
 
     if (recent.rows.length) {
@@ -100,25 +118,40 @@ module.exports = async function handler(req, res) {
 
     // --- kaydet -------------------------------------------------------
     await pool.query(
-      `INSERT INTO reports (route_id, direction, percent, client_id, ip_hash)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [routeId, direction, Math.round(percent), clientId, hashIp(req)]
+      `INSERT INTO reports (route_id, direction, percent, client_id, ip_hash, car)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [routeId, direction, Math.round(percent), clientId, hashIp(req), car]
     );
 
     // --- güncel özeti döndür ------------------------------------------
     const { rows } = await pool.query(
-      `SELECT percent, created_at
+      `SELECT car, percent, created_at
          FROM reports
         WHERE route_id = $1 AND direction = $2
           AND created_at > now() - interval '${Number(WINDOW_MINUTES)} minutes'`,
       [routeId, direction]
     );
 
+    const now = Date.now();
+    const summary = summarize(rows, now);
+
+    const byCar = { 1: [], 2: [] };
+    for (const r of rows) {
+      if (r.car === 1 || r.car === 2) byCar[r.car].push(r);
+    }
+    for (const c of [1, 2]) {
+      if (byCar[c].length) {
+        if (!summary.cars) summary.cars = {};
+        summary.cars[c] = summarize(byCar[c], now);
+      }
+    }
+
     return sendJson(res, 200, {
       ok: true,
       routeId,
       direction,
-      summary: summarize(rows, Date.now()),
+      car,
+      summary,
     });
   } catch (err) {
     console.error("report hatası:", err);

@@ -24,7 +24,13 @@ CREATE TABLE IF NOT EXISTS reports (
   client_id   UUID        NOT NULL,
 
   -- IP adresinin karması. Ham IP saklanmaz.
-  ip_hash     TEXT
+  ip_hash     TEXT,
+
+  -- Tramvaylarda hangi vagon: 1 = ön, 2 = arka.
+  -- NULL = otobüs, ya da yolcu vagonu ayırt etmedi.
+  -- Konya'daki tramvaylar iki vagonlu ve vagonların doluluğu çok farklı
+  -- olabiliyor; bu yüzden ayrı tutuluyor.
+  car         SMALLINT    CHECK (car IS NULL OR car IN (1, 2))
 );
 
 -- Doluluk hesabı: belirli bir hat+yön için son 30 dakikadaki bildirimler.
@@ -39,3 +45,7 @@ CREATE INDEX IF NOT EXISTS reports_time_idx
 -- Hız sınırı: bu cihaz bu hatta son X dakikada bildirim yaptı mı?
 CREATE INDEX IF NOT EXISTS reports_client_idx
   ON reports (client_id, route_id, direction, created_at DESC);
+
+-- Vagon bazlı doluluk sorgusu için
+CREATE INDEX IF NOT EXISTS reports_route_dir_car_time_idx
+  ON reports (route_id, direction, car, created_at DESC);

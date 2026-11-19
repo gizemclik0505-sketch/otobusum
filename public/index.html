@@ -392,6 +392,26 @@
   .quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   @media (min-width: 560px) { .quick-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
+  .car-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+
+  .field-label {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-muted);
+  }
+
+  .car-split {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: 0;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .car-split span { white-space: nowrap; }
+  .car-split b { font-weight: 700; }
+
   .quick-btn {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -605,6 +625,17 @@
   var CONF_TEXT = { NONE: "Veri yok", LOW: "Düşük güvenilirlik", MEDIUM: "Orta güvenilirlik", HIGH: "Yüksek güvenilirlik" };
   var DIR_TEXT = { 0: "Gidiş", 1: "Dönüş" };
 
+  // Konya'daki tramvaylar iki vagonlu ve vagonların doluluğu birbirinden çok
+  // farklı olabiliyor. "1. / 2. vagon" demek yerine ön/arka diyoruz: hangi
+  // vagonun birinci olduğu gidiş yönüne göre değişir, ön/arka ise binerken belli.
+  var CAR_TEXT = { 1: "Ön vagon", 2: "Arka vagon" };
+
+  var CAR_CHOICES = [
+    { v: 1, t: "Ön vagon" },
+    { v: 2, t: "Arka vagon" },
+    { v: null, t: "Ayırt etmedim" }
+  ];
+
   var QUICK = [
     { v: 10, t: "Boş" },
     { v: 35, t: "Oturacak yer var" },
@@ -682,9 +713,13 @@
     return myReports;
   }
 
-  function noteMyReport(routeId, dir) {
+  function myKey(routeId, dir, car) {
+    return routeId + "|" + dir + "|" + (car === 1 || car === 2 ? car : "x");
+  }
+
+  function noteMyReport(routeId, dir, car) {
     var m = getMyReports();
-    m[routeId + "|" + dir] = Date.now();
+    m[myKey(routeId, dir, car)] = Date.now();
     try { window.localStorage.setItem(STORE_KEY + ".mine", JSON.stringify(m)); } catch (e) {}
   }
 
@@ -724,8 +759,8 @@
   }
 
   // Sunucu da aynı sınırı uygular; buradaki sayaç sadece arayüz içindir.
-  function cooldownLeft(routeId, dir) {
-    var last = getMyReports()[routeId + "|" + dir];
+  function cooldownLeft(routeId, dir, car) {
+    var last = getMyReports()[myKey(routeId, dir, car)];
     if (!last) return 0;
     var left = COOLDOWN_MS - (Date.now() - last);
     return left > 0 ? left : 0;
@@ -772,6 +807,10 @@
     dir: 0,
     reportOpen: false,
     reportValue: 50,
+    // undefined = henüz seçilmedi (hiçbir düğme basılı görünmez)
+    // null       = kullanıcı "Ayırt etmedim" dedi
+    // 1 / 2      = ön / arka vagon
+    reportCar: undefined,
     toast: "",
     hitStop: null
   };
@@ -921,6 +960,7 @@
     state.selectedId = id;
     state.dir = route.dirs[0].d;
     state.reportOpen = false;
+    state.reportCar = undefined;   // başka hattan kalan vagon seçimi taşınmasın
     state.toast = "";
     state.hitStop = null;
     document.body.setAttribute("data-view", "detail");
@@ -1017,6 +1057,7 @@
         b.addEventListener("click", function () {
           state.dir = d.d;
           state.reportOpen = false;
+          state.reportCar = undefined;   // yön değişince vagon seçimi sıfırlanır
           state.toast = "";
           state.hitStop = null;
           renderDetail();
@@ -1090,7 +1131,30 @@
     }
     wrap.appendChild(meta);
 
-    var left = cooldownLeft(route.id, dir.d);
+    // Tramvaylarda vagon kırılımı. Genel doluluk ana rakam olarak kalır;
+    // veri ikiye bölündüğü için vagon başına bildirim sayısı daha az olur.
+    if (route.t === 0 && (occ.count > 0 || occ.cars)) {
+      var split = document.createElement("p");
+      split.className = "car-split";
+      for (var cv = 1; cv <= 2; cv++) {
+        var co = occ.cars ? occ.cars[cv] : null;
+        var seg = document.createElement("span");
+        if (co && co.percent !== null) {
+          seg.style.color = levelColor(co.level);
+          seg.innerHTML = CAR_TEXT[cv] + " <b>%" + co.percent + "</b> · " + co.count + " bildirim";
+        } else {
+          seg.style.color = "var(--unknown)";
+          seg.textContent = CAR_TEXT[cv] + " — veri yok";
+        }
+        split.appendChild(seg);
+      }
+      wrap.appendChild(split);
+    }
+
+    // Tramvayda bekleme kilidi uygulanmıyor: yolcu ön vagonu bildirdikten
+    // sonra arka vagonu da bildirebilsin. Sunucu aynı vagon için tekrar
+    // bildirimi yine engelliyor.
+    var left = route.t === 0 ? 0 : cooldownLeft(route.id, dir.d, null);
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn-primary";
@@ -1113,9 +1177,39 @@
     var box = document.createElement("div");
     box.className = "report-box";
 
+    var isTram = route.t === 0;
+
     var h3 = document.createElement("h3");
-    h3.textContent = "Otobüs ne kadar dolu? — " + dirLabel(route, dir) + ", son durak " + dir.to;
+    h3.textContent = (isTram ? "Tramvay" : "Otobüs") + " ne kadar dolu? — " +
+      dirLabel(route, dir) + ", son durak " + dir.to;
     box.appendChild(h3);
+
+    // Tramvaylar iki vagonlu; hangi vagonu bildirdiğini sormak doluluğu
+    // gerçekten kullanışlı kılıyor, çünkü iki vagon çok farklı olabiliyor.
+    if (isTram) {
+      var carLabel = document.createElement("p");
+      carLabel.className = "field-label";
+      carLabel.textContent = "Hangi vagondasınız?";
+      box.appendChild(carLabel);
+
+      var carGrid = document.createElement("div");
+      carGrid.className = "car-grid";
+      for (var ci = 0; ci < CAR_CHOICES.length; ci++) {
+        (function (choice) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "quick-btn";
+          b.setAttribute("aria-pressed", state.reportCar === choice.v ? "true" : "false");
+          b.textContent = choice.t;
+          b.addEventListener("click", function () {
+            state.reportCar = choice.v;
+            renderDetail();
+          });
+          carGrid.appendChild(b);
+        })(CAR_CHOICES[ci]);
+      }
+      box.appendChild(carGrid);
+    }
 
     var grid = document.createElement("div");
     grid.className = "quick-grid";
@@ -1199,7 +1293,10 @@
         routeId: route.id,
         direction: dir.d,
         percent: value,
-        clientId: getClientId()
+        clientId: getClientId(),
+        car: route.t === 0 && (state.reportCar === 1 || state.reportCar === 2)
+          ? state.reportCar
+          : null
       })
     })
       .then(function (r) {
@@ -1218,12 +1315,13 @@
         }
 
         OCC[route.id + "|" + dir.d] = res.body.summary;
-        noteMyReport(route.id, dir.d);
+        noteMyReport(route.id, dir.d, res.body.car);
         occState = "ok";
 
         var occ = res.body.summary;
         state.reportOpen = false;
-        state.toast = "Bildiriminiz kaydedildi, teşekkürler. " + route.id + " " +
+        var neresi = CAR_TEXT[res.body.car] ? " (" + CAR_TEXT[res.body.car].toLowerCase() + ")" : "";
+        state.toast = "Bildiriminiz" + neresi + " kaydedildi, teşekkürler. " + route.id + " " +
           dirLabel(route, dir) + " artık %" + occ.percent + " (" +
           LEVEL_TEXT[occ.level].toLowerCase() + ", " + occ.count + " bildirim).";
         renderStatus();
