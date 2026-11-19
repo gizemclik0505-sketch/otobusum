@@ -207,6 +207,86 @@
 
   .count-line { color: var(--fg-muted); font-size: 12px; margin: 0 0 8px; }
 
+  /* ---------- yakındaki duraklar ---------- */
+
+  .near-btn {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    margin-bottom: 12px;
+  }
+  .near-btn:hover { border-color: var(--accent); }
+  .near-btn[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-fg);
+  }
+  .near-btn .near-sub {
+    display: block;
+    font-weight: 400;
+    font-size: 11px;
+    opacity: .8;
+    margin-top: 2px;
+  }
+
+  .near-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .near-stop {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 11px;
+  }
+
+  .near-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .near-name { font-size: 14px; font-weight: 600; min-width: 0; }
+  .near-dist {
+    font-size: 12px;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .near-routes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+  }
+
+  .near-badge {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 7px;
+  }
+  .near-badge:hover { outline: 2px solid var(--fg); outline-offset: 1px; }
+
+  .near-msg {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 18px 14px;
+    color: var(--fg-muted);
+    font-size: 13px;
+    text-align: center;
+  }
+  .near-msg b { color: var(--fg); display: block; margin-bottom: 4px; }
+
   /* ---------- hat listesi ---------- */
 
   .route-list { display: flex; flex-direction: column; gap: 6px; }
@@ -585,6 +665,13 @@
         <button class="chip" type="button" data-filter="busy" aria-pressed="false">Yoğun</button>
       </div>
 
+      <button class="near-btn" id="nearBtn" type="button" aria-pressed="false">
+        Yakınımdaki duraklar
+        <span class="near-sub" id="nearSub">Konumunuza en yakın durakları ve oradan geçen hatları gösterir</span>
+      </button>
+
+      <div id="nearBox" hidden></div>
+
       <p class="count-line" id="countLine"></p>
       <div class="route-list" id="routeList"></div>
     </section>
@@ -873,6 +960,270 @@
       out.push(r);
     }
     return out;
+  }
+
+  // ------------------------------------------------------ yakındaki duraklar
+  //
+  // Durak verisi zaten uygulamanın içinde olduğu için hesap tamamen tarayıcıda
+  // yapılır: konum sunucuya gönderilmez, hiçbir yere kaydedilmez.
+
+  var NEAR_COUNT = 8;        // gösterilecek durak sayısı
+  var NEAR_ROUTE_LIMIT = 10; // durak başına baştan gösterilecek hat sayısı
+  var CLUSTER_M = 300;       // bu mesafedeki aynı adlı duraklar tek durak sayılır
+  var TOO_FAR_M = 50000;     // bundan uzaksa kullanıcı Konya dışında demektir
+
+  function metersBetween(aLat, aLon, bLat, bLon) {
+    var R = 6371000;
+    var p1 = aLat * Math.PI / 180, p2 = bLat * Math.PI / 180;
+    var dp = p2 - p1, dl = (bLon - aLon) * Math.PI / 180;
+    var h = Math.sin(dp / 2) * Math.sin(dp / 2) +
+            Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  // durak sırası -> o duraktan geçen hatlar. Bir kez kurulur.
+  var stopRoutes = null;
+  function getStopRoutes() {
+    if (stopRoutes) return stopRoutes;
+    stopRoutes = [];
+    for (var i = 0; i < DATA.routes.length; i++) {
+      var route = DATA.routes[i];
+      for (var d = 0; d < route.dirs.length; d++) {
+        var list = route.dirs[d].s;
+        for (var k = 0; k < list.length; k++) {
+          var si = list[k];
+          if (!stopRoutes[si]) stopRoutes[si] = [];
+          if (stopRoutes[si].indexOf(route.id) === -1) stopRoutes[si].push(route.id);
+        }
+      }
+    }
+    return stopRoutes;
+  }
+
+  function formatDistance(m) {
+    if (m < 1000) return Math.round(m / 10) * 10 + " m";
+    return (m / 1000).toFixed(1).replace(".", ",") + " km";
+  }
+
+  // Aynı durağın iki yakası ayrı kayıt (ör. "2100a" ve "2100d"). Listede iki
+  // kez görünmesinler diye aynı adlı ve birbirine yakın duraklar birleştirilir.
+  function nearestStops(lat, lon) {
+    var scored = [];
+    for (var i = 0; i < DATA.stops.length; i++) {
+      var s = DATA.stops[i];
+      scored.push({ i: i, name: s[0], lat: s[1], lon: s[2], m: metersBetween(lat, lon, s[1], s[2]) });
+    }
+    scored.sort(function (a, b) { return a.m - b.m; });
+
+    var clusters = [];
+    for (var k = 0; k < 60 && k < scored.length; k++) {
+      var cand = scored[k];
+      var merged = false;
+      for (var c = 0; c < clusters.length; c++) {
+        var cl = clusters[c];
+        if (cl.name === cand.name &&
+            metersBetween(cl.lat, cl.lon, cand.lat, cand.lon) < CLUSTER_M) {
+          cl.idx.push(cand.i);
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) {
+        clusters.push({ name: cand.name, lat: cand.lat, lon: cand.lon, m: cand.m, idx: [cand.i] });
+      }
+      if (clusters.length >= NEAR_COUNT && k > 20) break;
+    }
+
+    var sr = getStopRoutes();
+    for (var q = 0; q < clusters.length; q++) {
+      var ids = [];
+      for (var z = 0; z < clusters[q].idx.length; z++) {
+        var rl = sr[clusters[q].idx[z]] || [];
+        for (var y = 0; y < rl.length; y++) {
+          if (ids.indexOf(rl[y]) === -1) ids.push(rl[y]);
+        }
+      }
+      ids.sort(function (a, b) {
+        var na = parseInt(a, 10), nb = parseInt(b, 10);
+        if (na !== nb) return na - nb;
+        return a < b ? -1 : 1;
+      });
+      clusters[q].routes = ids;
+    }
+
+    return clusters.slice(0, NEAR_COUNT);
+  }
+
+  var nearState = "off";   // off | loading | ok | error
+  var nearData = null;
+  var nearError = "";
+
+  function setNear(stateName, data, errText) {
+    nearState = stateName;
+    nearData = data || null;
+    nearError = errText || "";
+    renderNear();
+  }
+
+  function requestLocation() {
+    if (!navigator.geolocation) {
+      setNear("error", null, "Tarayıcınız konum özelliğini desteklemiyor.");
+      return;
+    }
+    setNear("loading");
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        var lat = pos.coords.latitude, lon = pos.coords.longitude;
+        var stops = nearestStops(lat, lon);
+        if (!stops.length || stops[0].m > TOO_FAR_M) {
+          setNear("error", null,
+            "Konumunuz Konya'nın dışında görünüyor. En yakın durak " +
+            (stops.length ? formatDistance(stops[0].m) : "çok") + " uzakta.");
+          return;
+        }
+        setNear("ok", stops);
+      },
+      function (err) {
+        var msg = "Konum alınamadı.";
+        if (err && err.code === 1) {
+          msg = "Konum izni verilmedi. Tarayıcı ayarlarından bu siteye konum izni verip tekrar deneyebilirsiniz.";
+        } else if (err && err.code === 2) {
+          msg = "Konumunuz belirlenemedi. Açık alanda veya konum servisi açıkken tekrar deneyin.";
+        } else if (err && err.code === 3) {
+          msg = "Konum alma zaman aşımına uğradı. Tekrar deneyin.";
+        }
+        setNear("error", null, msg);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  }
+
+  function renderNear() {
+    var box = document.getElementById("nearBox");
+    var btn = document.getElementById("nearBtn");
+    var sub = document.getElementById("nearSub");
+    box.innerHTML = "";
+
+    btn.setAttribute("aria-pressed", nearState === "off" ? "false" : "true");
+
+    if (nearState === "off") {
+      box.hidden = true;
+      sub.textContent = "Konumunuza en yakın durakları ve oradan geçen hatları gösterir";
+      el.list.hidden = false;
+      el.count.hidden = false;
+      return;
+    }
+
+    box.hidden = false;
+    el.list.hidden = true;
+    el.count.hidden = true;
+    sub.textContent = "Kapatmak için tekrar dokunun";
+
+    if (nearState === "loading") {
+      var l = document.createElement("div");
+      l.className = "near-msg";
+      l.innerHTML = "<b>Konumunuz alınıyor…</b>Tarayıcı izin isterse onaylayın.";
+      box.appendChild(l);
+      return;
+    }
+
+    if (nearState === "error") {
+      var e = document.createElement("div");
+      e.className = "near-msg";
+      var eb = document.createElement("b");
+      eb.textContent = "Olmadı";
+      var et = document.createElement("span");
+      et.textContent = nearError;
+      e.appendChild(eb);
+      e.appendChild(et);
+      var retry = document.createElement("div");
+      retry.style.marginTop = "10px";
+      var rb = document.createElement("button");
+      rb.type = "button";
+      rb.className = "btn-quiet";
+      rb.textContent = "Tekrar dene";
+      rb.addEventListener("click", requestLocation);
+      retry.appendChild(rb);
+      e.appendChild(retry);
+      box.appendChild(e);
+      return;
+    }
+
+    var wrap = document.createElement("div");
+    wrap.className = "near-list";
+
+    for (var i = 0; i < nearData.length; i++) {
+      (function (cl) {
+        var card = document.createElement("div");
+        card.className = "near-stop";
+
+        var head = document.createElement("div");
+        head.className = "near-head";
+        var name = document.createElement("span");
+        name.className = "near-name";
+        name.textContent = cl.name;
+        var dist = document.createElement("span");
+        dist.className = "near-dist";
+        dist.textContent = formatDistance(cl.m) +
+          (cl.routes.length ? " · " + cl.routes.length + " hat" : "");
+        head.appendChild(name);
+        head.appendChild(dist);
+        card.appendChild(head);
+
+        if (cl.routes.length) {
+          var rw = document.createElement("div");
+          rw.className = "near-routes";
+
+          // Alaaddin gibi aktarma noktalarından 40'a yakın hat geçiyor.
+          // Hepsini birden basmak listeyi okunmaz hale getiriyor, o yüzden
+          // başta bir kısmı gösterilip gerisi isteğe bağlı açılıyor.
+          function addBadge(rid) {
+            var route = routeById(rid);
+            var b = document.createElement("button");
+            b.type = "button";
+            b.className = "near-badge";
+            b.style.background = route ? route.c : "var(--unknown)";
+            b.textContent = rid;
+            b.setAttribute("aria-label", rid + " hattını aç");
+            b.addEventListener("click", function () { selectRoute(rid); });
+            rw.appendChild(b);
+          }
+
+          var shown = Math.min(cl.routes.length, NEAR_ROUTE_LIMIT);
+          for (var r = 0; r < shown; r++) addBadge(cl.routes[r]);
+
+          if (cl.routes.length > NEAR_ROUTE_LIMIT) {
+            var more = document.createElement("button");
+            more.type = "button";
+            more.className = "btn-quiet";
+            more.textContent = "+" + (cl.routes.length - NEAR_ROUTE_LIMIT) + " hat daha";
+            more.addEventListener("click", function () {
+              more.remove();
+              for (var q = NEAR_ROUTE_LIMIT; q < cl.routes.length; q++) addBadge(cl.routes[q]);
+            });
+            rw.appendChild(more);
+          }
+
+          card.appendChild(rw);
+        } else {
+          var none = document.createElement("div");
+          none.className = "near-dist";
+          none.style.marginTop = "6px";
+          none.textContent = "Bu duraktan geçen aktif hat yok";
+          card.appendChild(none);
+        }
+
+        wrap.appendChild(card);
+      })(nearData[i]);
+    }
+
+    box.appendChild(wrap);
+
+    var note = document.createElement("p");
+    note.className = "count-line";
+    note.style.marginTop = "10px";
+    note.textContent = "Konumunuz yalnızca bu cihazda kullanıldı, hiçbir yere gönderilmedi.";
+    box.appendChild(note);
   }
 
   // ------------------------------------------------------------------ liste
@@ -1650,7 +2001,18 @@
   // -------------------------------------------------------------------- bağlama
   el.search.addEventListener("input", function () {
     state.query = el.search.value;
+    // Arama yapmaya başlayınca yakındaki duraklar listesi kapanır,
+    // yoksa kullanıcı yazdığı halde sonuç göremez.
+    if (nearState !== "off") setNear("off");
     renderList();
+  });
+
+  document.getElementById("nearBtn").addEventListener("click", function () {
+    if (nearState === "off") {
+      requestLocation();
+    } else {
+      setNear("off");
+    }
   });
 
   var chips = document.querySelectorAll(".chip");
