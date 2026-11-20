@@ -15,6 +15,7 @@ const {
   pool, summarize, hashIp, sendJson,
   WINDOW_MINUTES, COOLDOWN_MINUTES,
   IP_WINDOW_MINUTES, IP_ROUTE_LIMIT, IP_TOTAL_LIMIT,
+  CLEANUP_CHANCE, cleanupOldReports,
 } = require("./_lib.js");
 const { isValidRoute, isValidDirection, isTram } = require("./_routes.js");
 
@@ -198,6 +199,13 @@ module.exports = async function handler(req, res) {
         if (!summary.cars) summary.cars = {};
         summary.cars[c] = summarize(byCar[c], now);
       }
+    }
+
+    // Ara sıra eski bildirimleri temizle. Ayrı bir zamanlanmış işe bağlamak
+    // yerine buraya koyuldu: ek kurulum ve plana bağımlılık olmuyor.
+    // Bildirimlerin küçük bir kısmında çalıştığı için kullanıcıyı bekletmiyor.
+    if (Math.random() < CLEANUP_CHANCE) {
+      await cleanupOldReports();
     }
 
     return sendJson(res, 200, {

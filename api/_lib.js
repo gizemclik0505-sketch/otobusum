@@ -24,6 +24,21 @@ const COOLDOWN_MINUTES = 10;    // aynı cihaz, aynı hat+yön bekleme süresi
 const IP_WINDOW_MINUTES = 10;
 const IP_ROUTE_LIMIT = 5;       // aynı IP, aynı hat+yön: 10 dakikada en fazla
 const IP_TOTAL_LIMIT = 40;      // aynı IP, tüm hatlar: 10 dakikada en fazla
+
+// Bildirimler ne kadar saklanır.
+//
+// Doluluk hesabı yalnızca son 30 dakikaya bakıyor, yani bundan eskisi
+// gösterim için gereksiz. Yine de hemen silinmiyor: biriken geçmiş,
+// "12 numaralı hat hafta içi 08:00-09:00 arası ortalama %85 dolu" gibi
+// saat bazlı analizlere imkân veriyor ve bu veri başka hiçbir yerde yok.
+// 90 gün hem mevsimsel farkı (okul açık/kapalı) gösterir hem depolamayı
+// sınırlı tutar.
+const RETENTION_DAYS = 90;
+
+// Temizlik ayrı bir zamanlanmış işe bağlanmadı: her bildirimde küçük bir
+// olasılıkla çalışıyor. Böylece ek kurulum, ek ayar ve plana bağımlılık
+// olmuyor. Silme işlemi created_at indeksini kullandığı için hızlı.
+const CLEANUP_CHANCE = 0.02;    // bildirimlerin ~%2'sinde temizlik çalışır
 const OUTLIER_SPREAD = 30;      // medyandan bu kadar sapan bildirim atılır
 const LEVEL_LOW_MAX = 40;
 const LEVEL_MED_MAX = 75;
@@ -134,4 +149,37 @@ module.exports = {
   IP_WINDOW_MINUTES,
   IP_ROUTE_LIMIT,
   IP_TOTAL_LIMIT,
+  RETENTION_DAYS,
+  CLEANUP_CHANCE,
+  cleanupOldReports,
 };
+
+/**
+ * Saklama süresini aşan bildirimleri siler.
+ *
+ * Tek seferde en fazla 5.000 satır siliyor: sunucusuz fonksiyonun süresi
+ * sınırlı ve tek bir kullanıcının isteğini uzun süre bekletmek istemiyoruz.
+ * Birikme olursa sonraki çalışmalarda devam eder.
+ *
+ * Hata durumunda sessizce geçer: temizlik yapılamaması bildirimin
+ * kaydedilmesini engellememeli.
+ */
+async function cleanupOldReports() {
+  try {
+    const res = await pool.query(
+      `DELETE FROM reports
+        WHERE id IN (
+          SELECT id FROM reports
+           WHERE created_at < now() - interval '${Number(RETENTION_DAYS)} days'
+           LIMIT 5000
+        )`
+    );
+    if (res.rowCount) {
+      console.log(`temizlik: ${res.rowCount} eski bildirim silindi`);
+    }
+    return res.rowCount;
+  } catch (err) {
+    console.error("temizlik hatası (yok sayıldı):", err && err.message);
+    return 0;
+  }
+}

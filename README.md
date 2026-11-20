@@ -113,6 +113,27 @@ bildirimle doldurmasını önlemek.
 Konum iznine bağlı olacağı için sürtünme yaratır; kötüye kullanım gerçek bir
 sorun haline gelirse eklenebilir.
 
+## Veri saklama
+
+Bildirimler **90 gün** saklanır (`RETENTION_DAYS`, `api/_lib.js`).
+
+Doluluk hesabı yalnızca son 30 dakikaya bakar, yani gösterim için eski veri
+gereksiz. Yine de hemen silinmez: biriken geçmiş, "12 numaralı hat hafta içi
+08:00–09:00 arası ortalama %85 dolu" gibi saat bazlı analizlere imkân verir ve
+bu bilgi başka hiçbir kaynakta yoktur. 90 gün mevsimsel farkı da gösterir
+(okul açık/kapalı) ve depolamayı sınırlı tutar.
+
+Temizlik ayrı bir zamanlanmış işe bağlı değil: bildirimlerin yaklaşık %2'sinde
+çalışır, tek seferde en fazla 5.000 satır siler, birikme olursa sonraki
+çalışmalarda devam eder. Böylece ek kurulum ve barındırma planına bağımlılık
+yok. Hata durumunda sessizce geçer; temizlik yapılamaması bildirimin
+kaydedilmesini engellemez.
+
+Yer hesabı: bir bildirim indeksleriyle birlikte yaklaşık 350 bayt. Neon'un
+ücretsiz 1 GB'ına kabaca 3 milyon bildirim sığar — 90 günlük saklamayla
+pratikte hiç dolmaz.
+
+
 ## Veri kaynağı hakkında bilinenler
 
 Ham GTFS paketi incelenerek tasarlandı. Tasarımı etkileyen noktalar:
