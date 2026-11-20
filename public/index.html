@@ -1687,8 +1687,16 @@
           renderDetail();
           return;
         }
+        // Sunucu isteği aldı ama kabul etmedi (geçersiz veri, sunucu hatası).
+        // Bu bir bağlantı sorunu değil, o yüzden sunucunun kendi açıklaması
+        // olduğu gibi gösterilir; "internetini kontrol et" demek yanıltıcı olur.
         if (!res.body || !res.body.ok) {
-          throw new Error(res.body && res.body.error ? res.body.error : "Bildirim gönderilemedi");
+          state.reportOpen = false;
+          state.toast = (res.body && res.body.error)
+            ? res.body.error
+            : "Bildirim kaydedilemedi. Lütfen biraz sonra tekrar deneyin.";
+          renderDetail();
+          return;
         }
 
         OCC[route.id + "|" + dir.d] = res.body.summary;
@@ -1705,9 +1713,10 @@
         renderList();
         renderDetail();
       })
-      .catch(function (err) {
-        state.toast = "Bildirim gönderilemedi: " + (err && err.message ? err.message : "bağlantı hatası") +
-          ". İnternet bağlantınızı kontrol edip tekrar deneyin.";
+      .catch(function () {
+        // Buraya yalnızca sunucuya hiç ulaşılamadığında düşülür.
+        state.toast = "Bildirim gönderilemedi, sunucuya ulaşılamadı. " +
+          "İnternet bağlantınızı kontrol edip tekrar deneyin.";
         state.reportOpen = false;
         renderDetail();
       });

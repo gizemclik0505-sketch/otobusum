@@ -16,6 +16,7 @@ const {
   WINDOW_MINUTES, COOLDOWN_MINUTES,
   IP_WINDOW_MINUTES, IP_ROUTE_LIMIT, IP_TOTAL_LIMIT,
 } = require("./_lib.js");
+const { isValidRoute, isValidDirection, isTram } = require("./_routes.js");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROUTE_RE = /^[A-Za-z0-9-]{1,16}$/;
@@ -70,8 +71,22 @@ module.exports = async function handler(req, res) {
   if (!ROUTE_RE.test(routeId)) {
     return sendJson(res, 400, { ok: false, error: "Hat kimliği geçersiz" });
   }
+  // Hat gerçekten var mı? Olmayan hat kimlikleriyle gönderilen bildirimler
+  // hiçbir yerde görünmez ama tabloyu kirletir ve ileride yapılacak
+  // analizleri bozar.
+  if (!isValidRoute(routeId)) {
+    return sendJson(res, 400, { ok: false, error: "Böyle bir hat yok" });
+  }
   if (direction !== 0 && direction !== 1) {
     return sendJson(res, 400, { ok: false, error: "Yön 0 veya 1 olmalı" });
+  }
+  // 52 hat tek yönlü; onlara "dönüş" bildirimi anlamsız.
+  if (!isValidDirection(routeId, direction)) {
+    return sendJson(res, 400, { ok: false, error: "Bu hatta böyle bir yön yok" });
+  }
+  // Vagon yalnızca tramvaylarda anlamlı; otobüs bildirimlerinde yok sayılır.
+  if (car !== null && !isTram(routeId)) {
+    car = null;
   }
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
     return sendJson(res, 400, { ok: false, error: "Doluluk 0 ile 100 arasında olmalı" });

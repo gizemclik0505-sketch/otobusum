@@ -6,11 +6,18 @@
 //     sayfanın içinde gömülü olduğu için çevrimdışıyken uygulamanın büyük
 //     kısmı çalışır; yalnızca doluluk bilgisi güncellenemez.
 //
-// Önbellek stratejisi bilerek "önce ağ" seçildi: çevrimiçi kullanıcı her
-// zaman güncel sürümü görür, çevrimdışı kullanıcı önbellekten açar. Böylece
-// yeni bir sürüm yayınlandığında kimse eski sayfada kalmaz.
+// Strateji: sayfa için "önce ağ, ama en fazla 3 saniye bekle".
+//
+// Saf "önce ağ" olsaydı, zayıf şebekede kullanıcı 585 KB'lık sayfa inene
+// kadar boş ekrana bakardı — otobüs beklerken tam istenmeyen şey. Saf
+// "önce önbellek" olsaydı yeni sürüm bir açılış gecikmeli gelirdi.
+// Zaman aşımı ikisinin ortası: şebeke iyiyse güncel sürüm, kötüyse
+// önbellekten anında açılış. Ağ yanıtı sonra gelse de önbellek tazelenir.
+//
+// Simge ve manifest için "önce önbellek": bunlar sürüm içinde değişmez.
 
-var VERSION = "otobusum-v1";
+var VERSION = "otobusum-v2";
+var PAGE_TIMEOUT_MS = 3000;
 var SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -66,24 +73,70 @@ self.addEventListener("fetch", function (event) {
   // Doluluk verisi asla önbelleğe alınmaz: eski doluluk yanlış bilgidir.
   if (url.pathname.indexOf("/api/") === 0) return;
 
-  event.respondWith(
-    fetch(req)
-      .then(function (res) {
-        if (res && res.ok) {
-          var copy = res.clone();
-          caches.open(VERSION).then(function (cache) {
-            cache.put(req, copy).catch(function () {});
-          });
-        }
-        return res;
+  // Simgeler, manifest: sürüm içinde değişmez, önbellekten anında ver.
+  if (/\.(png|webmanifest|ico|svg)$/.test(url.pathname)) {
+    event.respondWith(
+      caches.match(req).then(function (hit) {
+        return hit || fetchAndCache(req);
       })
-      .catch(function () {
-        return caches.match(req).then(function (hit) {
-          if (hit) return hit;
-          // Sayfa gezinmesiyse ana sayfayı önbellekten ver
-          if (req.mode === "navigate") return caches.match("/");
-          return Response.error();
-        });
-      })
-  );
+    );
+    return;
+  }
+
+  event.respondWith(pageResponse(req));
 });
+
+function fetchAndCache(req) {
+  return fetch(req).then(function (res) {
+    if (res && res.ok) {
+      var copy = res.clone();
+      caches.open(VERSION).then(function (cache) {
+        cache.put(req, copy).catch(function () {});
+      });
+    }
+    return res;
+  });
+}
+
+function cacheFallback(req) {
+  return caches.match(req).then(function (hit) {
+    if (hit) return hit;
+    if (req.mode === "navigate") {
+      return caches.match("/").then(function (home) {
+        return home || Response.error();
+      });
+    }
+    return Response.error();
+  });
+}
+
+// Önce ağ, ama en fazla PAGE_TIMEOUT_MS bekle; süre dolarsa önbellekten ver.
+// Ağ yanıtı sonra gelirse önbellek yine tazelenir.
+function pageResponse(req) {
+  return new Promise(function (resolve) {
+    var done = false;
+    function finish(res) {
+      if (done) return;
+      done = true;
+      resolve(res);
+    }
+
+    var timer = setTimeout(function () {
+      if (done) return;
+      caches.match(req).then(function (hit) {
+        if (hit) finish(hit);
+      });
+    }, PAGE_TIMEOUT_MS);
+
+    fetchAndCache(req).then(
+      function (res) {
+        clearTimeout(timer);
+        finish(res);
+      },
+      function () {
+        clearTimeout(timer);
+        cacheFallback(req).then(finish);
+      }
+    );
+  });
+}
