@@ -10,6 +10,20 @@ const crypto = require("crypto");
 const WINDOW_MINUTES = 30;      // bu süreden eski bildirim sayılmaz
 const HALF_LIFE_MS = 10 * 60 * 1000;  // ağırlık yarılanma süresi
 const COOLDOWN_MINUTES = 10;    // aynı cihaz, aynı hat+yön bekleme süresi
+
+// IP tabanlı sınırlar.
+//
+// Cihaz kimliği (clientId) tarayıcıda üretilip sunucuya gönderiliyor, yani
+// kötü niyetli biri her istekte yeni bir kimlik uydurup cihaz sınırlarını
+// atlayabilir. IP karması ise istekle birlikte gelir, uydurulamaz.
+//
+// Eşikler bilerek gevşek: Türkiye'de mobil operatörler binlerce aboneyi tek
+// IP arkasına koyabiliyor (CGNAT). Sıkı bir sınır, aynı hattaki gerçek
+// yolcuları da engellerdi. Amaç tek bir kişinin bir hattı sahte bildirimle
+// doldurmasını önlemek, trafiği kısmak değil.
+const IP_WINDOW_MINUTES = 10;
+const IP_ROUTE_LIMIT = 5;       // aynı IP, aynı hat+yön: 10 dakikada en fazla
+const IP_TOTAL_LIMIT = 40;      // aynı IP, tüm hatlar: 10 dakikada en fazla
 const OUTLIER_SPREAD = 30;      // medyandan bu kadar sapan bildirim atılır
 const LEVEL_LOW_MAX = 40;
 const LEVEL_MED_MAX = 75;
@@ -117,4 +131,7 @@ module.exports = {
   sendJson,
   WINDOW_MINUTES,
   COOLDOWN_MINUTES,
+  IP_WINDOW_MINUTES,
+  IP_ROUTE_LIMIT,
+  IP_TOTAL_LIMIT,
 };

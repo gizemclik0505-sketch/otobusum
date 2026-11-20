@@ -49,3 +49,8 @@ CREATE INDEX IF NOT EXISTS reports_client_idx
 -- Vagon bazlı doluluk sorgusu için
 CREATE INDEX IF NOT EXISTS reports_route_dir_car_time_idx
   ON reports (route_id, direction, car, created_at DESC);
+
+-- IP tabanlı hız sınırı için. Cihaz kimliği tarayıcıda üretildiği için
+-- uydurulabiliyor; IP karması istekle birlikte geldiğinden uydurulamaz.
+CREATE INDEX IF NOT EXISTS reports_ip_time_idx
+  ON reports (ip_hash, created_at DESC);

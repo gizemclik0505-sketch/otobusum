@@ -11,7 +11,11 @@
 // bu yüzden car alanını her hat için kabul eder; seçeneği yalnızca tramvay
 // hatlarında gösteren taraf arayüzdür.
 
-const { pool, summarize, hashIp, sendJson, WINDOW_MINUTES, COOLDOWN_MINUTES } = require("./_lib.js");
+const {
+  pool, summarize, hashIp, sendJson,
+  WINDOW_MINUTES, COOLDOWN_MINUTES,
+  IP_WINDOW_MINUTES, IP_ROUTE_LIMIT, IP_TOTAL_LIMIT,
+} = require("./_lib.js");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROUTE_RE = /^[A-Za-z0-9-]{1,16}$/;
@@ -116,11 +120,46 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // --- IP tabanlı sınır --------------------------------------------
+    // Yukarıdaki sınırlar cihaz kimliğine bakıyor, o da tarayıcıda üretilip
+    // gönderiliyor: her istekte yeni kimlik uyduran biri hepsini atlar.
+    // IP karması istekle birlikte geldiği için uydurulamaz.
+    const ipHash = hashIp(req);
+    if (ipHash) {
+      const ipCheck = await pool.query(
+        `SELECT
+           (count(*) FILTER (WHERE route_id = $2 AND direction = $3))::int AS ayni_hat,
+           count(*)::int AS toplam
+         FROM reports
+        WHERE ip_hash = $1
+          AND created_at > now() - interval '${Number(IP_WINDOW_MINUTES)} minutes'`,
+        [ipHash, routeId, direction]
+      );
+
+      const { ayni_hat: ayniHat, toplam } = ipCheck.rows[0];
+
+      if (ayniHat >= IP_ROUTE_LIMIT) {
+        return sendJson(res, 429, {
+          ok: false,
+          error: "Bu hat için kısa sürede çok fazla bildirim geldi. Lütfen biraz sonra tekrar deneyin.",
+          retryAfterMinutes: IP_WINDOW_MINUTES,
+        });
+      }
+
+      if (toplam >= IP_TOTAL_LIMIT) {
+        return sendJson(res, 429, {
+          ok: false,
+          error: "Bağlantınızdan kısa sürede çok fazla bildirim geldi. Lütfen biraz sonra tekrar deneyin.",
+          retryAfterMinutes: IP_WINDOW_MINUTES,
+        });
+      }
+    }
+
     // --- kaydet -------------------------------------------------------
     await pool.query(
       `INSERT INTO reports (route_id, direction, percent, client_id, ip_hash, car)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [routeId, direction, Math.round(percent), clientId, hashIp(req), car]
+      [routeId, direction, Math.round(percent), clientId, ipHash, car]
     );
 
     // --- güncel özeti döndür ------------------------------------------

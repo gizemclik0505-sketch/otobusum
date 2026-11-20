@@ -55,12 +55,15 @@ module.exports = async function handler(req, res) {
   }
 
   const url = raw.trim();
+  // Bu uç nokta herkese açık. Tam sunucu adresini yazdırmıyoruz; teşhis için
+  // sağlayıcının görünmesi yeterli (ör. "neon.tech").
   let host = "bilinmiyor";
   let looksRight = false;
   try {
     const u = new URL(url);
-    host = u.host; // kullanıcı adı ve şifre bu alanda yer almaz
     looksRight = u.protocol === "postgres:" || u.protocol === "postgresql:";
+    const parts = u.hostname.split(".");
+    host = parts.length > 2 ? parts.slice(-2).join(".") : u.hostname;
   } catch (e) {
     /* biçim bozuk */
   }
