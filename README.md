@@ -21,8 +21,12 @@ api/occupancy.js           GET  — tüm hatların güncel doluluk özeti
 api/report.js              POST — yeni doluluk bildirimi kaydeder
 api/health.js              GET  — kurulum teşhisi
 api/_lib.js                Veritabanı bağlantısı ve doluluk hesaplama
-db/schema.sql              Veritabanı tabloları (ilk kurulum)
+api/_routes.js             Geçerli hat ve yön listesi (üretilir)
+api/_stops.js              Geçerli durak kimlikleri (üretilir)
+db/schema.sql              Veritabanı tabloları (ilk kurulum — hepsini içerir)
 db/002-vagon.sql           Tramvay vagon alanı (mevcut kuruluma ek)
+db/003-ip-limit.sql        IP bazlı hız sınırı indeksi (mevcut kuruluma ek)
+db/004-durak.sql           Bildirime durak bilgisi (mevcut kuruluma ek)
 package.json               Tek bağımlılık: pg (PostgreSQL sürücüsü)
 ```
 
@@ -39,6 +43,11 @@ genişliğinde açıp küçültür.
 - **Doluluk bildirimi** ve yolcu bildirimlerinden hesaplanan doluluk
 - **Tramvayda vagon bazlı doluluk** — ön ve arka vagon ayrı
 - **Yakınımdaki duraklar** — konum izniyle en yakın 8 durak ve geçen hatlar
+- **Bildirime durak bilgisi** — bildirim yapılırken cihaz, konumdan en yakın
+  durağı kendisi bulur; sunucuya yalnızca durağın kimliği gider, konumun
+  kendisi hiç gönderilmez. Amaç: "benim durağıma gelen araç dolu mu?"
+  sorusuna cevap verebilmek — aynı hat ilk durakta boş, beşinci durakta
+  dolu olabiliyor
 - **Çevrimdışı çalışır** — hat, durak ve güzergâh verisi uygulamanın içinde;
   internet yokken yalnızca doluluk güncellenemez
 - **Ana ekrana eklenebilir** — telefonda uygulama gibi açılır

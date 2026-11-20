@@ -30,7 +30,14 @@ CREATE TABLE IF NOT EXISTS reports (
   -- NULL = otobüs, ya da yolcu vagonu ayırt etmedi.
   -- Konya'daki tramvaylar iki vagonlu ve vagonların doluluğu çok farklı
   -- olabiliyor; bu yüzden ayrı tutuluyor.
-  car         SMALLINT    CHECK (car IS NULL OR car IN (1, 2))
+  car         SMALLINT    CHECK (car IS NULL OR car IN (1, 2)),
+
+  -- Bildirimin yapıldığı durak (GTFS stop_id, ör. '2415a').
+  -- NULL = konum yoktu ya da izin verilmedi.
+  -- Kullanıcıya sorulmaz, cihazındaki konumdan bulunur; konumun kendisi
+  -- sunucuya gönderilmez. Aynı hat ilk durakta boş, beşinci durakta dolu
+  -- olabildiği için hat bazında ortalama yeterli değil.
+  stop_id     TEXT
 );
 
 -- Doluluk hesabı: belirli bir hat+yön için son 30 dakikadaki bildirimler.
@@ -54,3 +61,7 @@ CREATE INDEX IF NOT EXISTS reports_route_dir_car_time_idx
 -- uydurulabiliyor; IP karması istekle birlikte geldiğinden uydurulamaz.
 CREATE INDEX IF NOT EXISTS reports_ip_time_idx
   ON reports (ip_hash, created_at DESC);
+
+-- Saat bazlı tahmin için: belirli hat+yön+durak geçmişi.
+CREATE INDEX IF NOT EXISTS reports_stop_time_idx
+  ON reports (route_id, direction, stop_id, created_at DESC);

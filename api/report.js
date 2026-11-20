@@ -18,6 +18,7 @@ const {
   CLEANUP_CHANCE, cleanupOldReports,
 } = require("./_lib.js");
 const { isValidRoute, isValidDirection, isTram } = require("./_routes.js");
+const { isValidStop } = require("./_stops.js");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROUTE_RE = /^[A-Za-z0-9-]{1,16}$/;
@@ -88,6 +89,18 @@ module.exports = async function handler(req, res) {
   // Vagon yalnızca tramvaylarda anlamlı; otobüs bildirimlerinde yok sayılır.
   if (car !== null && !isTram(routeId)) {
     car = null;
+  }
+
+  // Durak isteğe bağlı. Kullanıcıya sorulmuyor; cihazı konumundan en yakın
+  // durağı kendisi buluyor ve yalnızca durağın kimliğini gönderiyor.
+  // Konumun kendisi sunucuya hiç gelmiyor.
+  //
+  // Not: bu bir konum KANITI değil. İstemci istediği durağı gönderebilir.
+  // Dürüst bildirimleri zenginleştirir; kötüye kullanıma karşı koruma
+  // hız sınırlarıdır.
+  let stopId = typeof body.stopId === "string" ? body.stopId.trim() : "";
+  if (stopId && !isValidStop(stopId)) {
+    stopId = "";   // uydurma durak sessizce atılır, bildirim yine kabul edilir
   }
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
     return sendJson(res, 400, { ok: false, error: "Doluluk 0 ile 100 arasında olmalı" });
@@ -173,9 +186,9 @@ module.exports = async function handler(req, res) {
 
     // --- kaydet -------------------------------------------------------
     await pool.query(
-      `INSERT INTO reports (route_id, direction, percent, client_id, ip_hash, car)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [routeId, direction, Math.round(percent), clientId, ipHash, car]
+      `INSERT INTO reports (route_id, direction, percent, client_id, ip_hash, car, stop_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [routeId, direction, Math.round(percent), clientId, ipHash, car, stopId || null]
     );
 
     // --- güncel özeti döndür ------------------------------------------
