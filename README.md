@@ -80,10 +80,38 @@ Kurallar `api/_lib.js` içinde tek yerde durur:
 
 ## Kötüye kullanım koruması
 
-- Aynı cihaz aynı hat ve yöne **10 dakikada bir** bildirim gönderebilir.
-- Aynı cihaz tüm hatlarda **10 dakikada en fazla 8** bildirim gönderebilir.
-- IP adresi saklanmaz, yalnızca tuzlanmış karması tutulur.
-- Hesap sistemi yoktur; cihaz kimliği tarayıcıda üretilen anonim bir UUID'dir.
+İki katman var, çünkü tek başına cihaz kimliği yeterli değil.
+
+**Cihaz bazlı** (`clientId` — tarayıcıda üretilen anonim UUID)
+
+- Aynı cihaz, aynı hat + yön + vagon: **10 dakikada bir** bildirim
+- Aynı cihaz, tüm hatlar: **10 dakikada en fazla 8** bildirim
+
+**IP bazlı** (`ip_hash`)
+
+- Aynı IP, aynı hat + yön: **10 dakikada en fazla 5** bildirim
+- Aynı IP, tüm hatlar: **10 dakikada en fazla 40** bildirim
+
+IP katmanı şart: `clientId` tarayıcıda üretilip sunucuya gönderildiği için
+her istekte yeni bir kimlik uyduran biri cihaz sınırlarının hepsini atlar.
+IP karması istekle birlikte geldiğinden uydurulamaz.
+
+IP eşikleri bilerek gevşek tutuldu. Türkiye'de mobil operatörler binlerce
+aboneyi tek IP arkasına koyabiliyor (CGNAT); sıkı bir sınır aynı hattaki
+gerçek yolcuları da engellerdi. Amaç tek bir kişinin bir hattı sahte
+bildirimle doldurmasını önlemek.
+
+**Diğer katmanlar**
+
+- Medyan tabanlı aykırı değer temizliği (bkz. doluluk hesabı)
+- Veritabanı kısıtları: `percent` 0–100, `direction` 0/1, `car` NULL/1/2
+- IP adresi saklanmaz, yalnızca `IP_SALT` ile tuzlanmış karması tutulur
+- Hesap sistemi yoktur, kişisel veri toplanmaz
+- Konum verisi yalnızca tarayıcıda kullanılır, sunucuya hiç gönderilmez
+
+**Henüz yok:** bildirenin gerçekten o hatta yakın olduğunun doğrulanması.
+Konum iznine bağlı olacağı için sürtünme yaratır; kötüye kullanım gerçek bir
+sorun haline gelirse eklenebilir.
 
 ## Veri kaynağı hakkında bilinenler
 
